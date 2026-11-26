@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Khutbah audio source</title>
+<style>
+  body { font: 16px/1.5 system-ui, sans-serif; max-width: 760px; margin: 2em auto; padding: 0 1em;
+         background: #0f1115; color: #eef0f3; }
+  input, button, select { font-size: 16px; padding: .4em .7em; }
+  #log { font: 13px/1.4 ui-monospace, monospace; white-space: pre-wrap; background: #1a1e26;
+         padding: .8em; height: 50vh; overflow-y: auto; }
+  meter { width: 200px; }
+</style>
+</head>
+<body>
+<h1>Audio source</h1>
+<p>Streams this device's microphone to the server. Browsers only allow the microphone on
+<code>localhost</code> or HTTPS; for other setups use <code>scripts/stream_audio.py</code>.</p>
+<p>
+  <input id="title" value="Jumu'ah khutbah" size="30">
+  <select id="mic"></select>
+  <button id="go">Start</button>
+  <meter id="level" max="1"></meter>
+</p>
+<div id="log"></div>
+<script>
+const $log = document.getElementById("log"), $go = document.getElementById("go");
+const $mic = document.getElementById("mic"), $level = document.getElementById("level");
+let ws = null, ctx = null, stream = null;
+const log = s => { $log.textContent += s + "\n"; $log.scrollTop = $log.scrollHeight; };
+
+navigator.mediaDevices?.enumerateDevices().then(ds => {
+  for (const d of ds.filter(d => d.kind === "audioinput"))
+    $mic.append(new Option(d.label || d.deviceId.slice(0, 8), d.deviceId));
+});
+
+// AudioWorklet: collects 16 kHz float samples, posts ~100 ms Int16 chunks.
+const worklet = `
+class Pcm extends AudioWorkletProcessor {
+  constructor() { super(); this.buf = new Int16Array(1600); this.n = 0; }
+  process([input]) {
+    const ch = input[0];
+    if (!ch) return true;
+    let peak = 0;
+    for (let i = 0; i < ch.length; i++) {
+      const s = Math.max(-1, Math.min(1, ch[i]));
+      peak = Math.max(peak, Math.abs(s));
+      this.buf[this.n++] = s * 32767;
+      if (this.n === this.buf.length) {
+        this.port.postMessage({pcm: this.buf.buffer, peak}, [this.buf.buffer]);
+        this.buf = new Int16Array(1600); this.n = 0;
+      }
+    }
+    return true;
+  }
+}
+registerProcessor("pcm", Pcm);`;
+
+async function start() {
+  stream = await navigator.mediaDevices.getUserMedia({audio: {
+    deviceId: $mic.value || undefined, channelCount: 1,
+    echoCancellation: false, noiseSuppression: false, autoGainControl: true}});
+  ctx = new AudioContext({sampleRate: 16000}); // browser resamples
+  await ctx.audioWorklet.addModule(URL.createObjectURL(new Blob([worklet], {type: "text/javascript"})));
+  const node = new AudioWorkletNode(ctx, "pcm");
+  ctx.createMediaStreamSource(stream).connect(node);
+  const title = encodeURIComponent(document.getElementById("title").value);
+  ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws/ingest?title=${title}`);
+  ws.binaryType = "arraybuffer";
+  ws.onopen = () => log("connected; streaming");
+  ws.onclose = e => { log(`closed ${e.code} ${e.reason}`); stop(false); };
+  ws.onmessage = m => {
+    const ev = JSON.parse(m.data);
+    if (ev.type === "segment") log(`[${ev.start}s] (${ev.lang}, ${ev.stt_seconds}s) ${ev.text}`);
+    else if (ev.type === "card" && ev.new) log(`  ▸ ${ev.kind} ${ev.ref}`);
+    else if (ev.type === "passage") log(`  → ${ev.en ?? ""}\n  → ${ev.zh ?? ""}`);
+    else if (ev.type === "status" && ev.lag > 5) log(`  (lag ${ev.lag}s)`);
+  };
+  node.port.onmessage = ({data}) => {
+    $level.value = data.peak;
+    if (ws.readyState === WebSocket.OPEN) ws.send(data.pcm);
+  };
+  $go.textContent = "Stop";
+}
+
+function stop(sendEnd = true) {
+  if (sendEnd && ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({type: "end"}));
+  stream?.getTracks().forEach(t => t.stop());
+  ctx?.close();
+  stream = ctx = null;
+  $go.textContent = "Start";
+}
+
+$go.onclick = () => (ctx ? stop() : start().catch(e => log("error: " + e)));
+</script>
+</body>
+</html>

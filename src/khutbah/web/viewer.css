@@ -1,0 +1,40 @@
+:root {
+  --bg: #0f1115; --fg: #eef0f3; --muted: #8a919c; --card: #1a1e26; --accent: #d9b45a;
+  --size: clamp(18px, 2.4vw, 30px);
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: var(--size)/1.45 system-ui, sans-serif;
+       height: 100vh; display: flex; flex-direction: column; }
+body.tv { --size: clamp(28px, 3.4vw, 64px); }
+body.tv header { display: none; }
+header { display: flex; gap: 1em; align-items: center; padding: .4em 1em; font-size: 16px;
+         border-bottom: 1px solid #242a35; }
+header .spacer { flex: 1; }
+#state { font-size: 13px; padding: 2px 8px; border-radius: 10px; background: #1f6f3a; }
+#state.off { background: #6f1f1f; }
+select { font-size: 15px; background: var(--card); color: var(--fg); border: 1px solid #333; }
+main { flex: 1; display: flex; gap: 1em; padding: 1em; min-height: 0; }
+#captions { flex: 3; overflow-y: auto; display: flex; flex-direction: column; gap: .7em; }
+#cards { flex: 2; overflow-y: auto; display: flex; flex-direction: column; gap: .7em; }
+#cards:empty { display: none; }
+.passage { opacity: .55; transition: opacity .3s; }
+.passage:last-child { opacity: 1; }
+.passage .zh { font-family: "PingFang SC", "Noto Sans SC", sans-serif; }
+.passage .en + .zh { margin-top: .2em; }
+.passage .pending { color: var(--muted); font-style: italic; }
+.card { background: var(--card); border-left: 4px solid var(--accent); padding: .6em .8em;
+        border-radius: 6px; font-size: .8em; }
+.card .ref { color: var(--accent); font-size: .8em; font-weight: 600; }
+.card .ar { font-family: "Amiri", "Scheherazade New", "Geeza Pro", serif; font-size: 1.25em;
+            direction: rtl; text-align: right; line-height: 1.9; }
+.card .tr { margin-top: .3em; }
+.card .note { color: var(--muted); font-size: .75em; }
+.card.hadith .ar, .card.hadith .tr { display: -webkit-box; -webkit-box-orient: vertical;
+                                     -webkit-line-clamp: 6; overflow: hidden; }
+footer { color: var(--muted); font-size: .65em; padding: .3em 1em .6em; min-height: 1.8em;
+         white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+body.tv footer { display: none; }
+@media (max-width: 700px) {
+  main { flex-direction: column-reverse; }
+  #cards { flex: none; max-height: 40vh; }
+}
